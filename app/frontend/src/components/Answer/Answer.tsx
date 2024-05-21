@@ -11,23 +11,29 @@ import { AnswerIcon } from "./AnswerIcon";
 interface Props {
     answer: ChatAppResponse;
     isSelected?: boolean;
+    isSpeaking?: boolean;
     isStreaming: boolean;
     onCitationClicked: (filePath: string) => void;
     onThoughtProcessClicked: () => void;
     onSupportingContentClicked: () => void;
+    onSpeechSynthesisClicked: () => void;
     onFollowupQuestionClicked?: (question: string) => void;
     showFollowupQuestions?: boolean;
+    showSpeechOutput?: boolean;
 }
 
 export const Answer = ({
     answer,
     isSelected,
+    isSpeaking,
     isStreaming,
     onCitationClicked,
     onThoughtProcessClicked,
     onSupportingContentClicked,
+    onSpeechSynthesisClicked,
     onFollowupQuestionClicked,
-    showFollowupQuestions
+    showFollowupQuestions,
+    showSpeechOutput
 }: Props) => {
     const followupQuestions = answer.choices[0].context.followup_questions;
     const messageContent = answer.choices[0].message.content;
@@ -57,6 +63,24 @@ export const Answer = ({
                             onClick={() => onSupportingContentClicked()}
                             disabled={!answer.choices[0].context.data_points}
                         />
+                        {showSpeechOutput && isSpeaking && (
+                            <IconButton
+                                style={{ color: "red" }}
+                                iconProps={{ iconName: "Volume3" }}
+                                title="Speak answer"
+                                ariaLabel="Speak answer"
+                                onClick={() => onSpeechSynthesisClicked()}
+                            />
+                        )}
+                        {showSpeechOutput && !isSpeaking && (
+                            <IconButton
+                                style={{ color: "black" }}
+                                iconProps={{ iconName: "Volume3" }}
+                                title="Speak answer"
+                                ariaLabel="Speak answer"
+                                onClick={() => onSpeechSynthesisClicked()}
+                            />
+                        )}
                     </div>
                 </Stack>
             </Stack.Item>

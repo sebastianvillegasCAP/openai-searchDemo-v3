@@ -3,7 +3,7 @@ import { Checkbox, Panel, DefaultButton, Spinner, Slider, TextField, SpinButton,
 
 import styles from "./Ask.module.css";
 
-import { askApi, configApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPT4VInput } from "../../api";
+import { askApi, configApi, getSpeechApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPT4VInput } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -16,6 +16,8 @@ import { UploadFile } from "../../components/UploadFile";
 
 import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
+
+let audio = new Audio();
 
 export function Component(): JSX.Element {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -40,15 +42,19 @@ export function Component(): JSX.Element {
     const [showSemanticRankerOption, setShowSemanticRankerOption] = useState<boolean>(false);
     const [showVectorOption, setShowVectorOption] = useState<boolean>(false);
     const [showUserUpload, setShowUserUpload] = useState<boolean>(false);
+    const [showSpeechInput, setShowSpeechInput] = useState<boolean>(false);
+    const [showSpeechOutput, setShowSpeechOutput] = useState<boolean>(false);
 
     const lastQuestionRef = useRef<string>("");
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<unknown>();
     const [answer, setAnswer] = useState<ChatAppResponse>();
+    const [speechUrl, setSpeechUrl] = useState<string | null>();
 
     const [activeCitation, setActiveCitation] = useState<string>();
     const [activeAnalysisPanelTab, setActiveAnalysisPanelTab] = useState<AnalysisPanelTabs | undefined>(undefined);
+    const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
     const client = useLogin ? useMsal().instance : undefined;
 
@@ -62,12 +68,22 @@ export function Component(): JSX.Element {
                 setRetrievalMode(RetrievalMode.Text);
             }
             setShowUserUpload(config.showUserUpload);
+            setShowSpeechInput(config.showSpeechInput);
+            setShowSpeechOutput(config.showSpeechOutput);
         });
     };
 
     useEffect(() => {
         getConfig();
     }, []);
+
+    useEffect(() => {
+        if (answer) {
+            getSpeechApi(answer.choices[0].message.content).then(speechUrl => {
+                setSpeechUrl(speechUrl);
+            });
+        }
+    }, [answer]);
 
     const makeApiRequest = async (question: string) => {
         lastQuestionRef.current = question;
@@ -112,6 +128,8 @@ export function Component(): JSX.Element {
             };
             const result = await askApi(request, token);
             setAnswer(result);
+            setSpeechUrl(null);
+            stopSynthesis();
         } catch (e) {
             setError(e);
         } finally {
@@ -196,6 +214,29 @@ export function Component(): JSX.Element {
         setUseGroupsSecurityFilter(!!checked);
     };
 
+    const startSynthesis = (url: string | null) => {
+        if (isSpeaking) {
+            audio.pause();
+            setIsSpeaking(false);
+        }
+
+        if (url === null) {
+            return;
+        }
+
+        audio = new Audio(url);
+        audio.play();
+        setIsSpeaking(true);
+        audio.addEventListener("ended", () => {
+            setIsSpeaking(false);
+        });
+    };
+
+    const stopSynthesis = () => {
+        audio.pause();
+        setIsSpeaking(false);
+    };
+
     return (
         <div className={styles.askContainer}>
             <div className={styles.askTopSection}>
@@ -210,6 +251,7 @@ export function Component(): JSX.Element {
                         disabled={isLoading}
                         initQuestion={question}
                         onSend={question => makeApiRequest(question)}
+                        showSpeechInput={showSpeechInput}
                     />
                 </div>
             </div>
@@ -224,6 +266,9 @@ export function Component(): JSX.Element {
                             onCitationClicked={x => onShowCitation(x)}
                             onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
                             onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
+                            showSpeechOutput={showSpeechOutput}
+                            isSpeaking={isSpeaking}
+                            onSpeechSynthesisClicked={() => (isSpeaking ? stopSynthesis() : startSynthesis(speechUrl || null))}
                         />
                     </div>
                 )}

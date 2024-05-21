@@ -186,3 +186,23 @@ def mock_computervision_response():
             }
         ),
     )
+
+
+class Mock_Audio:
+    def __init__(self, audio_data):
+        self.audio_data = audio_data
+
+    def read(self):
+        return self.audio_data
+
+
+class SynthesisResult:
+    def __init__(self, result):
+        self.__result = result
+
+    def get(self):
+        return self.__result
+
+
+def mock_speak_text_async(self, text):
+    return SynthesisResult(Mock_Audio("mock_audio_data"))

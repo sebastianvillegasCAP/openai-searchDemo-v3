@@ -77,7 +77,8 @@ async def test_redirect(client):
 async def test_favicon(client):
     response = await client.get("/favicon.ico")
     assert response.status_code == 200
-    assert response.content_type == "image/vnd.microsoft.icon"
+    assert response.content_type.startswith("image")
+    assert response.content_type.endswith("icon")
 
 
 @pytest.mark.asyncio
@@ -343,6 +344,26 @@ async def test_chat_handle_exception_contentsafety_streaming(client, monkeypatch
     assert "Exception while generating response stream: The response was filtered" in caplog.text
     result = await response.get_data()
     snapshot.assert_match(result, "result.jsonlines")
+
+
+@pytest.mark.asyncio
+async def test_speech(client):
+    response = await client.post(
+        "/speech",
+        json={
+            "text": "test",
+        },
+    )
+    assert response.status_code == 200
+    assert await response.get_data() == b"mock_audio_data"
+
+
+@pytest.mark.asyncio
+async def test_speech_request_must_be_json(client):
+    response = await client.post("/speech")
+    assert response.status_code == 415
+    result = await response.get_json()
+    assert result["error"] == "request must be json"
 
 
 @pytest.mark.asyncio

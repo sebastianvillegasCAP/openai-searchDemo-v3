@@ -149,6 +149,18 @@
     "useGPT4V": {
       "value": "${USE_GPT4V=false}"
     },
+    "useSpeechInput": {
+      "value": "${USE_SPEECH_INPUT=false}"
+    },
+    "useSpeechOutput": {
+      "value": "${USE_SPEECH_OUTPUT=false}"
+    },
+    "speechServiceName": {
+      "value": "${AZURE_SPEECH_SERVICE}"
+    },
+    "speechResourceGroupName": {
+      "value": "${AZURE_SPEECH_RESOURCE_GROUP}"
+    },
     "useAuthentication": {
       "value": "${AZURE_USE_AUTHENTICATION=false}"
     },

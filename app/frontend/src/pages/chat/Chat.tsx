@@ -8,6 +8,7 @@ import styles from "./Chat.module.css";
 import {
     chatApi,
     configApi,
+    getSpeechApi,
     RetrievalMode,
     ChatAppResponse,
     ChatAppResponseOrError,
@@ -29,6 +30,8 @@ import { VectorSettings } from "../../components/VectorSettings";
 import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { GPT4VSettings } from "../../components/GPT4VSettings";
+
+let audio = new Audio();
 
 const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -60,12 +63,16 @@ const Chat = () => {
     const [activeAnalysisPanelTab, setActiveAnalysisPanelTab] = useState<AnalysisPanelTabs | undefined>(undefined);
 
     const [selectedAnswer, setSelectedAnswer] = useState<number>(0);
-    const [answers, setAnswers] = useState<[user: string, response: ChatAppResponse][]>([]);
-    const [streamedAnswers, setStreamedAnswers] = useState<[user: string, response: ChatAppResponse][]>([]);
+    const [answers, setAnswers] = useState<[user: string, response: ChatAppResponse, speechUrl: string | null][]>([]);
+    const [streamedAnswers, setStreamedAnswers] = useState<[user: string, response: ChatAppResponse, speechUrl: string | null][]>([]);
+    const [runningIndex, setRunningIndex] = useState<number>(-1);
+
     const [showGPT4VOptions, setShowGPT4VOptions] = useState<boolean>(false);
     const [showSemanticRankerOption, setShowSemanticRankerOption] = useState<boolean>(false);
     const [showVectorOption, setShowVectorOption] = useState<boolean>(false);
     const [showUserUpload, setShowUserUpload] = useState<boolean>(false);
+    const [showSpeechInput, setShowSpeechInput] = useState<boolean>(false);
+    const [showSpeechOutput, setShowSpeechOutput] = useState<boolean>(false);
 
     const getConfig = async () => {
         configApi().then(config => {
@@ -77,10 +84,12 @@ const Chat = () => {
                 setRetrievalMode(RetrievalMode.Text);
             }
             setShowUserUpload(config.showUserUpload);
+            setShowSpeechInput(config.showSpeechInput);
+            setShowSpeechOutput(config.showSpeechOutput);
         });
     };
 
-    const handleAsyncRequest = async (question: string, answers: [string, ChatAppResponse][], setAnswers: Function, responseBody: ReadableStream<any>) => {
+    const handleAsyncRequest = async (question: string, answers: [string, ChatAppResponse, string | null][], responseBody: ReadableStream<any>) => {
         let answer: string = "";
         let askResponse: ChatAppResponse = {} as ChatAppResponse;
 
@@ -92,7 +101,7 @@ const Chat = () => {
                         ...askResponse,
                         choices: [{ ...askResponse.choices[0], message: { content: answer, role: askResponse.choices[0].message.role } }]
                     };
-                    setStreamedAnswers([...answers, [question, latestResponse]]);
+                    setStreamedAnswers([...answers, [question, latestResponse, null]]);
                     resolve(null);
                 }, 33);
             });
@@ -168,18 +177,23 @@ const Chat = () => {
             };
 
             const response = await chatApi(request, token);
+            let speechUrl = null;
             if (!response.body) {
                 throw Error("No response body");
             }
             if (shouldStream) {
-                const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, setAnswers, response.body);
-                setAnswers([...answers, [question, parsedResponse]]);
+                const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, response.body);
+                setAnswers([...answers, [question, parsedResponse, null]]);
+                speechUrl = await getSpeechApi(parsedResponse.choices[0].message.content);
+                setAnswers([...answers, [question, parsedResponse, speechUrl]]);
             } else {
                 const parsedResponse: ChatAppResponseOrError = await response.json();
                 if (response.status > 299 || !response.ok) {
                     throw Error(parsedResponse.error || "Unknown error");
                 }
-                setAnswers([...answers, [question, parsedResponse as ChatAppResponse]]);
+                setAnswers([...answers, [question, parsedResponse as ChatAppResponse, null]]);
+                speechUrl = await getSpeechApi((parsedResponse as ChatAppResponse).choices[0].message.content);
+                setAnswers([...answers, [question, parsedResponse as ChatAppResponse, speechUrl]]);
             }
         } catch (e) {
             setError(e);
@@ -282,6 +296,30 @@ const Chat = () => {
         setSelectedAnswer(index);
     };
 
+    const startOrStopSynthesis = async (url: string | null, index: number) => {
+        if (runningIndex === index) {
+            audio.pause();
+            setRunningIndex(-1);
+            return;
+        }
+
+        if (runningIndex !== -1) {
+            audio.pause();
+            setRunningIndex(-1);
+        }
+
+        if (!url) {
+            return;
+        }
+
+        audio = new Audio(url);
+        await audio.play();
+        audio.addEventListener("ended", () => {
+            setRunningIndex(-1);
+        });
+        setRunningIndex(index);
+    };
+
     return (
         <div className={styles.container}>
             <div className={styles.commandsContainer}>
@@ -315,6 +353,9 @@ const Chat = () => {
                                                 onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab, index)}
                                                 onFollowupQuestionClicked={q => makeApiRequest(q)}
                                                 showFollowupQuestions={useSuggestFollowupQuestions && answers.length - 1 === index}
+                                                showSpeechOutput={showSpeechOutput}
+                                                onSpeechSynthesisClicked={() => startOrStopSynthesis(streamedAnswer[2], index)}
+                                                isSpeaking={runningIndex === index}
                                             />
                                         </div>
                                     </div>
@@ -334,6 +375,9 @@ const Chat = () => {
                                                 onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab, index)}
                                                 onFollowupQuestionClicked={q => makeApiRequest(q)}
                                                 showFollowupQuestions={useSuggestFollowupQuestions && answers.length - 1 === index}
+                                                showSpeechOutput={showSpeechOutput}
+                                                onSpeechSynthesisClicked={() => startOrStopSynthesis(answer[2], index)}
+                                                isSpeaking={runningIndex === index}
                                             />
                                         </div>
                                     </div>
@@ -364,6 +408,7 @@ const Chat = () => {
                             placeholder="Type a new question (e.g. does my plan cover annual eye exams?)"
                             disabled={isLoading}
                             onSend={question => makeApiRequest(question)}
+                            showSpeechInput={showSpeechOutput}
                         />
                     </div>
                 </div>

@@ -4,6 +4,7 @@ from typing import IO
 from unittest import mock
 
 import aiohttp
+import azure.cognitiveservices.speech as speechsdk
 import azure.storage.filedatalake
 import azure.storage.filedatalake.aio
 import msal
@@ -32,6 +33,7 @@ from .mocks import (
     MockBlobClient,
     MockResponse,
     mock_computervision_response,
+    mock_speak_text_async,
 )
 
 MockSearchIndex = SearchIndex(
@@ -57,6 +59,11 @@ def mock_compute_embeddings_call(monkeypatch):
             raise Exception("Unexpected URL for mock call to ClientSession.post()")
 
     monkeypatch.setattr(aiohttp.ClientSession, "post", mock_post)
+
+
+@pytest.fixture
+def mock_speechsdk(monkeypatch):
+    monkeypatch.setattr(speechsdk.SpeechSynthesizer, "speak_text_async", mock_speak_text_async)
 
 
 @pytest.fixture
@@ -277,8 +284,12 @@ def mock_env(monkeypatch, request):
         monkeypatch.setenv("AZURE_STORAGE_CONTAINER", "test-storage-container")
         monkeypatch.setenv("AZURE_STORAGE_RESOURCE_GROUP", "test-storage-rg")
         monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "test-storage-subid")
+        monkeypatch.setenv("USE_SPEECH_INPUT", "true")
+        monkeypatch.setenv("USE_SPEECH_OUTPUT", "true")
         monkeypatch.setenv("AZURE_SEARCH_INDEX", "test-search-index")
         monkeypatch.setenv("AZURE_SEARCH_SERVICE", "test-search-service")
+        monkeypatch.setenv("AZURE_SPEECH_RESOURCE_ID", "test-id")
+        monkeypatch.setenv("AZURE_SPEECH_REGION", "eastus")
         monkeypatch.setenv("AZURE_OPENAI_CHATGPT_MODEL", "gpt-35-turbo")
         monkeypatch.setenv("ALLOWED_ORIGIN", "https://frontend.com")
         for key, value in request.param.items():
@@ -298,6 +309,7 @@ async def client(
     mock_openai_chatcompletion,
     mock_openai_embedding,
     mock_acs_search,
+    mock_speechsdk,
     mock_blob_container_client,
     mock_compute_embeddings_call,
 ):
